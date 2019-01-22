@@ -53,11 +53,11 @@ fi
 
 # Read optional parameters
 while getopts ":d" opt; do
-	case $opt in
-		d)
-			DEBUG=1
-		;;
-	esac
+  case $opt in
+  d)
+  DEBUG=1
+  ;;
+  esac
 done
 
 # Locate curl
@@ -102,7 +102,7 @@ else
 fi
 
 function remove_temp_files {
-		FOO="BAR"
+  FOO="BAR"
 }
 
 ################################################################################
@@ -113,9 +113,9 @@ function remove_temp_files {
 
 # Check for config file
 if [[ -e $CONFIG_FILE ]]; then
-	# Load data
-	source "$CONFIG_FILE" 2>/dev/null
-	# Checking loaded data
+  # Load data
+  source "$CONFIG_FILE" 2>/dev/null
+  # Checking loaded data
   if [[ $OAUTH_ACCESS_TOKEN = "" ]]; then
     echo -ne "Error loading data from $CONFIG_FILE...\n"
     echo -ne "It is recommended to run $0 unlink\n"
@@ -124,45 +124,45 @@ if [[ -e $CONFIG_FILE ]]; then
   fi
 else
 
-	# New setup
+  # New setup
 
-	echo -ne "\n This is the first time you run this script, please follow the instructions:\n\n"
+  echo -ne "\n This is the first time you run this script, please follow the instructions:\n\n"
 
-	echo -ne " 1) Open the following URL in your Browser, and log in using your account: $APP_CREATE_URL\n"
-	echo -ne " 2) Click on \"New app\"\n"
-	echo -ne " 3) Enter the \"App name\" that you prefer (e.g. pCloudUploader$RANDOM$RANDOM$RANDOM)\n"
-	echo -ne " 4) Now go on with the configuration, choosing the app permissions and access restrictions to your pCloud folder\n\n"
+  echo -ne " 1) Open the following URL in your Browser, and log in using your account: $APP_CREATE_URL\n"
+  echo -ne " 2) Click on \"New app\"\n"
+  echo -ne " 3) Enter the \"App name\" that you prefer (e.g. pCloudUploader$RANDOM$RANDOM$RANDOM)\n"
+  echo -ne " 4) Now go on with the configuration, choosing the app permissions and access restrictions to your pCloud folder\n\n"
 
-	echo -ne " Now, click on the \"Add new app\" button.\n\n"
+  echo -ne " Now, click on the \"Add new app\" button.\n\n"
 
-	echo -ne " When your new app is successfully created, please click on it under \"My applications\".\n\n"
+  echo -ne " When your new app is successfully created, please click on it under \"My applications\".\n\n"
 
-	echo -ne " Copy and paste the client ID:\n\n"
+  echo -ne " Copy and paste the client ID:\n\n"
 
-	echo -ne " # Client ID: "
-	read -r CLIENT_ID
+  echo -ne " # Client ID: "
+  read -r CLIENT_ID
 
-	echo -ne " Copy and paste the client secret:\n\n"
+  echo -ne " Copy and paste the client secret:\n\n"
 
-	echo -ne " # Client secret: "
-	read -r CLIENT_SECRET
+  echo -ne " # Client secret: "
+  read -r CLIENT_SECRET
 
-	echo -ne " Open the following URL in your browser. Log in if necessary and click \"Allow\": $APP_AUTHORIZE_URL?client_id=$CLIENT_ID&response_type=code\n\n"
+  echo -ne " Open the following URL in your browser. Log in if necessary and click \"Allow\": $APP_AUTHORIZE_URL?client_id=$CLIENT_ID&response_type=code\n\n"
 
-	echo -ne " Copy and paste the access code here:\n\n"
+  echo -ne " Copy and paste the access code here:\n\n"
 
-	echo -ne " # Access code: "
-	read -r ACCESS_CODE
+  echo -ne " # Access code: "
+  read -r ACCESS_CODE
 
-	# TODO Get access token from server using CURL request
+  # TODO Get access token from server using CURL request
 
-	echo -ne "CLIENT_ID=$CLIENT_ID\nCLIENT_SECRET=$CLIENT_SECRET\nACCESS_TOKEN=$ACCESS_TOKEN\n" > "$CONFIG_FILE"
+  echo -ne "CLIENT_ID=$CLIENT_ID\nCLIENT_SECRET=$CLIENT_SECRET\nACCESS_TOKEN=$ACCESS_TOKEN\n" > "$CONFIG_FILE"
 
-	echo -ne "   The configuration has been saved.\n\n"
+  echo -ne "   The configuration has been saved.\n\n"
 
-	remove_temp_files
+  remove_temp_files
 
-	exit 0
+  exit 0
 
 fi
 
