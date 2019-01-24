@@ -25,6 +25,7 @@ CONFIG_FILE=~/.pcloud_uploader
 # Default values
 TMP_DIR="/tmp"
 EXCLUDE=()
+SKIP_EXISTING_FILES=0
 
 # Curl location
 # If not set, curl will be searched into the $PATH
@@ -35,8 +36,10 @@ BIN_DEPS="sed basename date grep stat dd mkdir"
 APP_CREATE_URL="https://docs.pcloud.com/my_apps/"
 APP_AUTHORIZE_URL="https://my.pcloud.com/oauth2/authorize"
 API_CHECKSUMFILE_URL="https://api.pcloud.com/checksumfile"
+API_CREATEFOLDER_URL="https://api.pcloud.com/createfolder"
 API_LISTFOLDER_URL="https://api.pcloud.com/listfolder"
 API_OAUTH2_TOKEN_URL="https://api.pcloud.com/oauth2_token"
+API_UPLOADFILE_URL="https://api.pcloud.com/uploadfile"
 
 RESPONSE_FILE="$TMP_DIR/pu_resp_$RANDOM"
 
@@ -125,30 +128,30 @@ function check_http_response {
 
     #Proxy error
     5)
-      print "\nError: Couldn't resolve proxy. The given proxy host could not be resolved.\n"
+      echo -ne "\nError: Couldn't resolve proxy. The given proxy host could not be resolved.\n"
       remove_temp_files
       exit 1
     ;;
 
     #Missing CA certificates
     60|58|77)
-      print "\nError: cURL is not able to performs peer SSL certificate verification.\n"
-      print "Please, install the default ca-certificates bundle.\n"
-      print "To do this in a Debian/Ubuntu based system, try:\n"
-      print "  sudo apt-get install ca-certificates\n\n"
-      print "If the problem persists, try to use the -k option (insecure).\n"
+      echo -ne "\nError: cURL is not able to performs peer SSL certificate verification.\n"
+      echo -ne "Please, install the default ca-certificates bundle.\n"
+      echo -ne "To do this in a Debian/Ubuntu based system, try:\n"
+      echo -ne "  sudo apt-get install ca-certificates\n\n"
+      echo -ne "If the problem persists, try to use the -k option (insecure).\n"
       remove_temp_files
       exit 1
     ;;
 
     6)
-      print "\nError: Couldn't resolve host.\n"
+      echo -ne "\nError: Couldn't resolve host.\n"
       remove_temp_files
       exit 1
     ;;
 
     7)
-      print "\nError: Couldn't connect to host.\n"
+      echo -ne "\nError: Couldn't connect to host.\n"
       remove_temp_files
       exit 1
     ;;
@@ -162,7 +165,7 @@ function check_http_response {
     case $ERROR_MSG in
 
       *access?attempt?failed?because?this?app?is?not?configured?to?have*)
-        echo -e "\nError: The Permission type/Access level configured doesn't match the DropBox App settings!\nPlease run \"$0 unlink\" and try again."
+        echo -e "\nError: The Permission type/Access level configured doesn't match the pCloud App settings!\nPlease run \"$0 unlink\" and try again."
         exit 1
       ;;
 
@@ -187,6 +190,55 @@ function normalize_path {
   else
     echo "$path"
   fi
+}
+
+#Create a new directory
+#$1 = Remote directory to create
+function pcloud_mkdir {
+
+    local DIR_DST=$(normalize_path "$1")
+
+    echo -ne " > Creating Directory \"$DIR_DST\"... "
+
+    $CURL_BIN $CURL_ACCEPT_CERTIFICATES -X GET -L -s --show-error --globoff -i -o "$RESPONSE_FILE" "$API_CREATEFOLDER_URL?access_token=$ACCESS_TOKEN&path=$DIR_DST" 2> /dev/null
+    check_http_response
+    local RES=$(get_api_result)
+
+    if [[ $RES == 2002 ]]; then
+      local TMP_DST="/"
+      for PARENT in ${DIR_DST//\// }; do
+        TMP_DST="$TMP_DST/$PARENT"
+        $CURL_BIN $CURL_ACCEPT_CERTIFICATES -X GET -L -s --show-error --globoff -i -o "$RESPONSE_FILE" "$API_CREATEFOLDER_URL?access_token=$ACCESS_TOKEN&path=$TMP_DST" 2> /dev/null
+        check_http_response
+        if [[ $(get_api_result) != 0 ]]; then
+          exit 1
+        fi
+      done
+    fi
+
+    local RES=$(get_api_result)
+    case "$RES" in
+      0)
+        echo -ne "DONE\n" ;;
+      2004)
+        echo -ne "ALREADY_EXISTS\n" ;;
+      *)
+        echo -ne "FAILED\n" ;;
+    esac
+}
+
+# Query the sha256-pcloud-sum of a remote file
+# $1 = Remote file
+function pcloud_sha {
+  # TODO: Implement proper hashing
+  echo "*****"
+}
+
+# Query the sha256-pcloud-sum of a local file
+# $1 = Local file
+function pcloud_sha_local {
+  # TODO: Implement proper hashing
+  echo "*****"
 }
 
 # Check if it's a file or directory
@@ -226,7 +278,7 @@ function pcloud_unlink {
   fi
 }
 
-# Generic upload wrapper around pcloud_upload_file and db_upload_dir functions
+# Generic upload wrapper around pcloud_upload_file and pcloud_upload_dir functions
 # $1 = Local source file/dir
 # $2 = Remote destination file/dir
 function pcloud_upload {
@@ -235,60 +287,62 @@ function pcloud_upload {
   local DST=$(normalize_path "$2")
 
   for j in "${EXCLUDE[@]}"
-
     # Checking excluded files
     do :
       if [[ $(echo "$SRC" | grep "$j" | wc -l) -gt 0 ]]; then
-        print "Skipping excluded file/dir: "$j
+        echo -ne "Skipping excluded file/dir: "$j
         return
       fi
   done
 
   # Checking if the file/dir exists
   if [[ ! -e $SRC && ! -d $SRC ]]; then
-    print " > No such file or directory: $SRC\n"
+    echo -ne " > No such file or directory: $SRC\n"
     ERROR_STATUS=1
     return
   fi
 
   # Checking if the file/dir has read permissions
   if [[ ! -r $SRC ]]; then
-    print " > Error reading file $SRC: permission denied\n"
+    echo -ne " > Error reading file $SRC: permission denied\n"
     ERROR_STATUS=1
     return
   fi
 
   TYPE=$(pcloud_stat "$DST")
 
-  # If DST it's a file, do nothing, it's the default behaviour
+  # If DST is a file, do nothing (default behaviour)
   if [[ $TYPE == "FILE" ]]; then
     DST="$DST"
-  # If DST doesn't exists and doesn't ends with a /, it will be the destination file name
+  # If DST doesn't exist and doesn't end with a /, it will be the destination file name
   elif [[ $TYPE == "NOT_FOUND" && "${DST: -1}" != "/" ]]; then
     DST="$DST"
-  # If DST doesn't exists and ends with a /, it will be the destination folder
+  # If DST doesn't exist and ends with a /, it will be the destination folder
   elif [[ $TYPE == "NOT_FOUND" && "${DST: -1}" == "/" ]]; then
     local filename=$(basename "$SRC")
     DST="$DST$filename"
-  #If DST it's a directory, it will be the destination folder
+  # If DST is a directory, it will be the destination folder
   elif [[ $TYPE == "DIR" ]]; then
     local filename=$(basename "$SRC")
-    if [[ "${DST: -1}" == "/" ]]; then
-      DST="$DST$filename"
-    else
+    if [[ "${DST: -1}" != "/" ]]; then
+      # Append / if missing
       DST="$DST/$filename"
+    else
+      DST="$DST$filename"
     fi
   fi
 
-  # It's a directory
+  pcloud_mkdir $(dirname "$DST")
+
+  # The source is a directory
   if [[ -d $SRC ]]; then
     pcloud_upload_dir "$SRC" "$DST"
-  # It's a file
+  # The source is a file
   elif [[ -e $SRC ]]; then
     pcloud_upload_file "$SRC" "$DST"
-  # Unsupported object...
+  # Unsupported object
   else
-    print " > Skipping not regular file \"$SRC\"\n"
+    echo -ne " > Skipping irregular file \"$SRC\"\n"
   fi
 
 }
@@ -302,19 +356,62 @@ function pcloud_upload_dir
   local DIR_DST=$(normalize_path "$2")
 
   # Creating remote directory
-  db_mkdir "$DIR_DST"
+  pcloud_mkdir "$DIR_DST"
 
   for file in "$DIR_SRC/"*; do
-    db_upload "$file" "$DIR_DST"
+    pcloud_upload "$file" "$DIR_DST"
   done
 }
 
-# Generic upload wrapper around db_chunked_upload_file and db_simple_upload_file
-# The final upload function will be choosen based on the file size
 # $1 = Local source file
 # $2 = Remote destination file
 function pcloud_upload_file {
-  FOO="bar"
+
+
+  local FILE_SRC=$(normalize_path "$1")
+  local FILE_DST=$(normalize_path "$2")
+
+  shopt -s nocasematch
+
+  # Checking not allowed file names
+  basefile_dst=$(basename "$FILE_DST")
+  if [[ $basefile_dst == "thumbs.db" || \
+    $basefile_dst == "desktop.ini" || \
+    $basefile_dst == ".ds_store" || \
+    $basefile_dst == "icon\r" || \
+    $basefile_dst == ".dropbox" || \
+    $basefile_dst == ".dropbox.attr" ]]; then
+
+    echo -ne " > Skipping not allowed file name \"$FILE_DST\"\n"
+    return
+
+  fi
+
+  shopt -u nocasematch
+
+  # Checking if the file already exists
+  TYPE=$(pcloud_stat "$FILE_DST")
+  if [[ $TYPE == "FILE" && $SKIP_EXISTING_FILES == 1 ]]; then
+      echo -ne " > Skipping already existing file \"$FILE_DST\"\n"
+      return
+  fi
+  # Checking if the file has the correct check sum
+  if [[ $TYPE == "FILE" ]]; then
+      sha_src=$(pcloud_sha_local "$FILE_SRC")
+      sha_dst=$(pcloud_sha "$FILE_DST")
+      if [[ $sha_src == $sha_dst && $sha_src != "ERR" ]]; then
+          echo -ne "> Skipping file \"$FILE_SRC\", file exists with the same hash\n"
+          return
+      fi
+  fi
+
+  local PATH_DST=$(urlencode $(dirname "$FILE_DST"))
+  FILE_DST=$(urlencode $(basename "$FILE_DST"))
+  $CURL_BIN $CURL_ACCEPT_CERTIFICATES $CURL_PARAMETERS -X POST -i --globoff -o "$RESPONSE_FILE" --header "Content-Type: application/octet-stream" --data-binary @"$FILE_SRC" "$API_UPLOADFILE_URL?access_token=$ACCESS_TOKEN&path=$PATH_DST&filename=$FILE_DST"
+  check_http_response
+  local RES=$(get_api_result)
+  echo "RESULT: $RES"
+
 }
 
 function remove_temp_files {
@@ -322,11 +419,10 @@ function remove_temp_files {
 }
 
 function urlencode {
-  #The printf is necessary to correctly decode unicode sequences
+  # The printf is necessary to correctly decode unicode sequences
   local string=$($PRINTF "${1}")
   local strlen=${#string}
   local encoded=""
-
   for (( pos=0 ; pos<strlen ; pos++ )); do
     c=${string:$pos:1}
     case "$c" in
@@ -352,7 +448,7 @@ function usage
 # echo -e "\t delete   <REMOTE_FILE/DIR>"
 # echo -e "\t move     <REMOTE_FILE/DIR> <REMOTE_FILE/DIR>"
 # echo -e "\t copy     <REMOTE_FILE/DIR> <REMOTE_FILE/DIR>"
-# echo -e "\t mkdir    <REMOTE_DIR>"
+  echo -e "\t mkdir    <REMOTE_DIR>"
 # echo -e "\t list     [REMOTE_DIR]"
 # echo -e "\t monitor  [REMOTE_DIR] [TIMEOUT]"
 # echo -e "\t share    <REMOTE_FILE>"
@@ -400,9 +496,9 @@ else
 
   echo -ne "\n This is the first time you run this script, please follow the instructions:\n\n"
 
-  echo -ne " 1) Open the following URL in your Browser, and log in using your account: $APP_CREATE_URL\n"
-  echo -ne " 2) Click on \"New app\"\n"
-  echo -ne " 3) Enter the \"App name\" that you prefer (e.g. pCloudUploader$RANDOM$RANDOM$RANDOM)\n"
+  echo -ne " 1) Open the following URL in your Browser, and log in using your account:\n    $APP_CREATE_URL\n\n"
+  echo -ne " 2) Click on \"New app\"\n\n"
+  echo -ne " 3) Enter the \"App name\" that you prefer (e.g. pCloudUploader$RANDOM$RANDOM$RANDOM)\n\n"
   echo -ne " 4) Now go on with the configuration, choosing the app permissions and access restrictions to your pCloud folder\n\n"
 
   echo -ne " Now, click on the \"Add new app\" button.\n\n"
@@ -419,7 +515,8 @@ else
   echo -ne " # Client secret: "
   read -r CLIENT_SECRET
 
-  echo -ne " Open the following URL in your browser. Log in if necessary and click \"Allow\": $APP_AUTHORIZE_URL?client_id=$CLIENT_ID&response_type=code\n\n"
+  echo -ne " Open the following URL in your browser, log in if necessary and click \"Allow\": $APP_AUTHORIZE_URL?client_id=$CLIENT_ID&response_type=code\n\n"
+  echo -ne "   $APP_AUTHORIZE_URL?client_id=$CLIENT_ID&response_type=code\n\n"
 
   echo -ne " Copy and paste the access code here:\n\n"
 
@@ -455,6 +552,18 @@ let argnum=$#-$OPTIND
 
 case $CMD in
 
+  mkdir)
+
+    if [[ $argnum -lt 1 ]]; then
+      usage
+    fi
+
+    DIR_DST="$ARG1"
+
+    pcloud_mkdir "/$DIR_DST"
+
+  ;;
+
   upload)
 
     if [[ $argnum -lt 2 ]]; then
@@ -468,7 +577,7 @@ case $CMD in
       pcloud_upload "$FILE_SRC" "/$FILE_DST"
     done
 
-;;
+  ;;
 
   unlink)
     pcloud_unlink
