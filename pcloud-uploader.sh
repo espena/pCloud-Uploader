@@ -3,7 +3,7 @@
 # pCloud uploader
 #
 # Based on Andrea Fabrizi's "Dropbox-Uploader"
-# Adapted for pCloud by Espen Andersen - post@espenandersen.no
+# Adapted to pCloud by Espen Andersen - post@espenandersen.no
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -419,7 +419,7 @@ function pcloud_upload_file {
     $basefile_dst == ".dropbox" || \
     $basefile_dst == ".dropbox.attr" ]]; then
 
-    echo -ne " > Skipping not allowed file name \"$FILE_DST\"\n"
+    echo -ne " > Skipping disallowed file name \"$FILE_DST\"\n"
     return
 
   fi
