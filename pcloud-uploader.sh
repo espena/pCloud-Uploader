@@ -19,6 +19,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+################################################################################
+#                                                                              #
+#    I N I T I A L I Z E                                                       #
+#                                                                              #
+################################################################################
+
 # Default configuration file
 CONFIG_FILE=~/.pcloud_uploader
 
@@ -37,6 +43,8 @@ APP_CREATE_URL="https://docs.pcloud.com/my_apps/"
 APP_AUTHORIZE_URL="https://my.pcloud.com/oauth2/authorize"
 API_CHECKSUMFILE_URL="https://api.pcloud.com/checksumfile"
 API_CREATEFOLDER_URL="https://api.pcloud.com/createfolder"
+API_GETFILEPUBLINK_URL="https://api.pcloud.com/getfilepublink"
+API_GETFOLDERPUBLINK_URL="https://api.pcloud.com/getfolderpublink"
 API_LISTFOLDER_URL="https://api.pcloud.com/listfolder"
 API_OAUTH2_TOKEN_URL="https://api.pcloud.com/oauth2_token"
 API_UPLOADFILE_URL="https://api.pcloud.com/uploadfile"
@@ -117,23 +125,29 @@ else
     PRINTF_OPT=""
 fi
 
+################################################################################
+#                                                                              #
+#    F U N C T I O N S                                                         #
+#                                                                              #
+################################################################################
+
 function check_http_response {
   CODE=$?
   # Checking curl exit code
   case $CODE in
-    #OK
+    # OK
     0)
 
     ;;
 
-    #Proxy error
+    # Proxy error
     5)
       echo -ne "\nError: Couldn't resolve proxy. The given proxy host could not be resolved.\n"
       remove_temp_files
       exit 1
     ;;
 
-    #Missing CA certificates
+    # Missing CA certificates
     60|58|77)
       echo -ne "\nError: cURL is not able to performs peer SSL certificate verification.\n"
       echo -ne "Please, install the default ca-certificates bundle.\n"
@@ -192,8 +206,8 @@ function normalize_path {
   fi
 }
 
-#Create a new directory
-#$1 = Remote directory to create
+# Create a new directory
+# $1 = Remote directory to create
 function pcloud_mkdir {
 
     local DIR_DST=$(normalize_path "$1")
@@ -241,10 +255,34 @@ function pcloud_sha_local {
   echo "*****"
 }
 
+# Share remote file/directory
+# $1 = Remote file/directory path
+function pcloud_share {
+    local SHARED_PATH=$(normalize_path "$1")
+    TYPE=$(pcloud_stat "$SHARED_PATH")
+    SHARED_PATH=$(urlencode "$SHARED_PATH")
+    case "$TYPE" in
+      "FILE")
+        $CURL_BIN $CURL_ACCEPT_CERTIFICATES -X GET -L -s --show-error --globoff -i -o "$RESPONSE_FILE" "$API_GETFILEPUBLINK_URL?access_token=$ACCESS_TOKEN&path=$SHARED_PATH" 2> /dev/null
+        check_http_response
+        local RES=$(get_api_result)
+        ;;
+      "DIR")
+        $CURL_BIN $CURL_ACCEPT_CERTIFICATES -X GET -L -s --show-error --globoff -i -o "$RESPONSE_FILE" "$API_GETFOLDERPUBLINK_URL?access_token=$ACCESS_TOKEN&path=$SHARED_PATH" 2> /dev/null
+        check_http_response
+        local RES=$(get_api_result)
+        ;;
+    esac
+
+    if [[ $RES == 0 ]]; then
+      SHARE_CODE=$(sed -n 's/.*"code": "\([^"]*\)".*/\1/p' "$RESPONSE_FILE")
+      echo print " > Share link: https://my.pcloud.com/publink/show?code=$SHARE_CODE"
+    fi
+}
+
 # Check if it's a file or directory
 # Returns FILE/DIR/NOT_FOUND/ERR
-function pcloud_stat
-{
+function pcloud_stat {
   if [[ $1 == "/" ]]; then
     echo "DIR"
     return
@@ -350,8 +388,7 @@ function pcloud_upload {
 # Directory upload
 # $1 = Local source dir
 # $2 = Remote destination dir
-function pcloud_upload_dir
-{
+function pcloud_upload_dir {
   local DIR_SRC=$(normalize_path "$1")
   local DIR_DST=$(normalize_path "$2")
 
@@ -395,6 +432,7 @@ function pcloud_upload_file {
       echo -ne " > Skipping already existing file \"$FILE_DST\"\n"
       return
   fi
+
   # Checking if the file has the correct check sum
   if [[ $TYPE == "FILE" ]]; then
       sha_src=$(pcloud_sha_local "$FILE_SRC")
@@ -451,7 +489,7 @@ function usage
   echo -e "\t mkdir    <REMOTE_DIR>"
 # echo -e "\t list     [REMOTE_DIR]"
 # echo -e "\t monitor  [REMOTE_DIR] [TIMEOUT]"
-# echo -e "\t share    <REMOTE_FILE>"
+  echo -e "\t share    <REMOTE_FILE>"
 # echo -e "\t saveurl  <URL> <REMOTE_DIR>"
 # echo -e "\t search   <QUERY>"
 # echo -e "\t info"
@@ -540,7 +578,7 @@ fi
 
 ################################################################################
 #                                                                              #
-#    S T A R T                                                                 #
+#    M A I N                                                                   #
 #                                                                              #
 ################################################################################
 
@@ -551,6 +589,18 @@ ARG2="${*:$OPTIND+2:1}"
 let argnum=$#-$OPTIND
 
 case $CMD in
+
+  share)
+
+    if [[ $argnum -lt 1 ]]; then
+      usage
+    fi
+
+    FILE_DST="$ARG1"
+
+    pcloud_share "/$FILE_DST"
+
+  ;;
 
   mkdir)
 
