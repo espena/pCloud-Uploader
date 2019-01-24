@@ -456,7 +456,7 @@ function usage
 # echo -e "\t search   <QUERY>"
 # echo -e "\t info"
 # echo -e "\t space"
-# echo -e "\t unlink"
+  echo -e "\t unlink"
 
 # echo -e "\nOptional parameters:"
 # echo -e "\t-f <FILENAME> Load the configuration file from a specific file"
